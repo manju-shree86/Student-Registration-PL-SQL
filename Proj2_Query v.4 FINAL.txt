@@ -1,0 +1,518 @@
+/*To Drop triggers which are already created*/
+drop trigger tr_classes_update;
+drop trigger tr_enrollment_delete;
+drop trigger tr_enrollment_insert;
+
+/*To drop the squence created and logs table for fresh start*/
+drop sequence log#;
+drop table logs;
+
+
+/* Sequence to generate the values for log# automatically when new log records are inserted into the logs table. 
+Start the sequence with 100 with an increment of 1.*/
+CREATE SEQUENCE LOG#
+  START WITH 100
+  INCREMENT BY 1;
+
+
+/* Create a table "logs" for recording all the transactional records into the logs table */
+create table logs (log# number(4) primary key, 
+    op_name varchar2(10) not null, 
+    op_time date not null, 
+    table_name varchar2(12) not null, 
+    operation varchar2(6) not null, 
+    key_value varchar2(30));
+
+
+/*PACKAGES*/
+
+create or replace PACKAGE students_registration AS 
+
+  /* TODO enter package declarations (types, exceptions, methods etc) here */
+    PROCEDURE show_students;
+
+    PROCEDURE show_classes;
+
+    PROCEDURE show_courses;
+
+    PROCEDURE show_enrollments;
+
+    PROCEDURE show_logs;
+
+    PROCEDURE enroll_student (
+        b_no     VARCHAR2,
+        class_id VARCHAR2
+    );
+
+    PROCEDURE drop_student (
+        s_b#      IN students.b#%TYPE,
+        s_classid IN classes.classid%TYPE
+    );
+
+END students_registration;
+
+
+/*PROCUDURE WITHIN THE PACKAGES*/
+
+create or replace PACKAGE BODY students_registration AS
+/*Procedure to create to display the tuples in STUDENTS table*/
+    PROCEDURE show_students AS
+    BEGIN
+    -- TODO: Implementation required for Procedure STUDENTS_REGISTRATION.show_students
+        FOR anyone IN (
+            SELECT
+                *
+            FROM
+                students
+        ) LOOP
+            dbms_output.put_line(anyone.b#
+                                 || ','
+                                 || anyone.first_name
+                                 || ','
+                                 || anyone.last_name
+                                 || ','
+                                 || anyone.st_level
+                                 || ','
+                                 || anyone.gpa
+                                 || ','
+                                 || anyone.email
+                                 || ','
+                                 || anyone.bdate);
+        END LOOP;
+
+        NULL;
+    END show_students;
+
+/*Procedure to create to display the tuples in CLASSES table*/
+    PROCEDURE show_classes AS
+    BEGIN
+    -- TODO: Implementation required for Procedure STUDENTS_REGISTRATION.show_classes
+        FOR anyone IN (
+            SELECT
+                *
+            FROM
+                classes
+        ) LOOP
+            dbms_output.put_line(anyone.classid
+                                 || ','
+                                 || anyone.prog_code
+                                 || ','
+                                 || anyone.course#
+                                 || ','
+                                 || anyone.sect#
+                                 || ','
+                                 || anyone.year
+                                 || ','
+                                 || anyone.semester
+                                 || ','
+                                 || anyone.limit
+                                 || ','
+                                 || anyone.class_size
+                                 || ','
+                                 || anyone.room);
+        END LOOP;
+
+        NULL;
+    END show_classes;
+
+/*Procedure to create to display the tuples in COURSES table*/
+    PROCEDURE show_courses AS
+    BEGIN
+    -- TODO: Implementation required for Procedure STUDENTS_REGISTRATION.show_courses
+        FOR anyone IN (
+            SELECT
+                *
+            FROM
+                courses
+        ) LOOP
+            dbms_output.put_line(anyone.prog_code
+                                 || ','
+                                 || anyone.course#
+                                 || ','
+                                 || anyone.title);
+        END LOOP;
+
+        NULL;
+    END show_courses;
+
+/*Procedure to create to display the tuples in ENROLLMENTS table*/
+    PROCEDURE show_enrollments AS
+    BEGIN
+    -- TODO: Implementation required for Procedure STUDENTS_REGISTRATION.show_enrollments
+        FOR anyone IN (
+            SELECT
+                *
+            FROM
+                enrollments
+        ) LOOP
+            dbms_output.put_line(anyone.student_b#
+                                 || ','
+                                 || anyone.classid
+                                 || ','
+                                 || anyone.lgrade);
+        END LOOP;
+
+        NULL;
+    END show_enrollments;
+
+/*Procedure to create to display the tuples in LOGS table*/
+    PROCEDURE show_logs AS
+    BEGIN
+    -- TODO: Implementation required for Procedure STUDENTS_REGISTRATION.show_logs
+        FOR anyone IN (
+            SELECT
+                *
+            FROM
+                logs
+        ) LOOP
+            dbms_output.put_line(anyone.log#
+                                 || ','
+                                 || anyone.op_name
+                                 || ','
+                                 || anyone.op_time
+                                 || ','
+                                 || anyone.table_name
+                                 || ','
+                                 || anyone.operation
+                                 || ','
+                                 || anyone.key_value);
+        END LOOP;
+
+        NULL;
+    END show_logs;
+
+/*Procedure to fire triggers during ENROLLING STUDENT IN CLASSES with REJECTION comments wherever necessary*/
+    PROCEDURE enroll_student (
+        b_no     VARCHAR2,
+        class_id VARCHAR2
+    ) AS
+    BEGIN
+        DECLARE
+            records_n             NUMBER;
+            classid_n             NUMBER;
+            is_class_offered      NUMBER;
+            seats_availablity     NUMBER;
+            is_already_registered NUMBER;
+            courses_taken_n       NUMBER;
+            no_data_found EXCEPTION;
+            no_classes_found EXCEPTION;
+            no_classes_offered EXCEPTION;
+            classroom_is_full EXCEPTION;
+            registered EXCEPTION;
+            max_courses_taken EXCEPTION;
+        BEGIN
+            SELECT
+                COUNT(b#)
+            INTO records_n
+            FROM
+                students
+            WHERE
+                b# = b_no;
+
+            SELECT
+                COUNT(classid)
+            INTO classid_n
+            FROM
+                classes
+            WHERE
+                classid = class_id;
+
+            IF ( records_n < 1 ) THEN
+                RAISE no_data_found;
+            ELSIF ( classid_n < 1 ) THEN
+                RAISE no_classes_found;
+            ELSE
+                IF (
+                    records_n > 0
+                    AND classid_n > 0
+                ) THEN
+                    SELECT
+                        COUNT(classid)
+                    INTO is_class_offered
+                    FROM
+                        classes
+                    WHERE
+                        classid = class_id
+                        AND year = 2021
+                        AND semester = 'Spring';
+
+                    IF ( is_class_offered = 0 ) THEN
+                        RAISE no_classes_offered;
+                    END IF;
+                END IF;
+
+                IF ( is_class_offered > 0 ) THEN
+                    SELECT
+                        limit - class_size
+                    INTO seats_availablity
+                    FROM
+                        classes
+                    WHERE
+                        classid = class_id
+                        AND year = 2021
+                        AND semester = 'Spring';
+
+                    IF ( seats_availablity <= 0 ) THEN
+                        RAISE classroom_is_full;
+                    END IF;
+                END IF;
+
+                IF ( seats_availablity > 0 ) THEN
+                    SELECT
+                        COUNT(student_b#)
+                    INTO is_already_registered
+                    FROM
+                        enrollments
+                    WHERE
+                        student_b# = upper(b_no)
+                        AND classid = class_id;
+
+                    IF ( is_already_registered > 0 ) THEN
+                        RAISE registered;
+                    END IF;
+                END IF;
+
+                IF ( is_already_registered < 1 ) THEN
+                    SELECT
+                        COUNT(enrollments.classid)
+                    INTO courses_taken_n
+                    FROM
+                        enrollments
+                        INNER JOIN classes ON enrollments.classid = classes.classid
+                    WHERE
+                        enrollments.student_b# = b_no
+                        AND year = 2021
+                        AND semester = 'Spring';
+
+                    IF ( courses_taken_n >= 4 ) THEN
+                        RAISE max_courses_taken;
+                    END IF;
+                END IF;
+
+                IF ( courses_taken_n < 4 ) THEN
+                    UPDATE classes
+                    SET
+                        class_size = class_size + 1
+                    WHERE
+                        classid = class_id
+                        AND year = 2021
+                        AND semester = 'Spring';
+
+                    INSERT INTO enrollments (
+                        student_b#,
+                        classid
+                    ) VALUES (
+                        b_no,
+                        class_id
+                    );
+
+                    dbms_output.put_line('Student Enrolled Successfully');
+                END IF;
+
+            END IF;
+
+        EXCEPTION
+            WHEN no_data_found THEN
+                dbms_output.put_line('The B# invalid');
+            WHEN no_classes_found THEN
+                dbms_output.put_line('The classid is invalid');
+            WHEN no_classes_offered THEN
+                dbms_output.put_line('Cannot enroll into a class from a previous semester.');
+            WHEN classroom_is_full THEN
+                dbms_output.put_line('The class is already full.');
+            WHEN registered THEN
+                dbms_output.put_line('The student is already in the class.');
+            WHEN max_courses_taken THEN
+                dbms_output.put_line('Students cannot enroll into more than four courses in the same semester.');
+        END;
+    END enroll_student;
+
+/*Procedure to fire triggers during DROPPING STUDENT FROM CLASSES with REJECTION comments wherever necessary*/
+    PROCEDURE drop_student (
+        s_b#      IN students.b#%TYPE,
+        s_classid IN classes.classid%TYPE
+    ) IS
+        s_enrollment NUMBER;
+        v_classid    NUMBER;
+        v_b#         NUMBER;
+        s_valid      NUMBER;
+        last         NUMBER;
+        nop          NUMBER;
+    BEGIN
+/* Conditions to check if the B# and classid is valid, if student is registered and if the student is registered has he/she registered in Spring 2021*/
+        SELECT
+            COUNT(*)
+        INTO v_b#
+        FROM
+            students g
+        WHERE
+            g.b# = s_b#;
+
+        SELECT
+            COUNT(*)
+        INTO v_classid
+        FROM
+            classes c
+        WHERE
+            s_classid = c.classid;
+
+        SELECT
+            COUNT(*)
+        INTO s_enrollment
+        FROM
+            enrollments e
+        WHERE
+            e.student_b# = s_b#;
+
+        SELECT
+            COUNT(*)
+        INTO s_valid
+        FROM
+            classes c
+        WHERE
+            s_classid = c.classid
+            AND year = 2021
+            AND semester = 'Spring';
+
+        IF ( v_b# = 0 ) THEN
+            dbms_output.put_line('The B# is invalid');
+        ELSIF ( v_classid = 0 ) THEN
+            dbms_output.put_line('The classid is invalid');
+        ELSIF (
+            s_enrollment = 0
+            AND v_b# = 1
+        ) THEN
+            dbms_output.put_line('The student is not enrolled in the class');
+        ELSIF ( s_valid = 0 ) THEN
+            dbms_output.put_line('Only enrollment in the current semester can be dropped');
+        ELSE 
+ /* If all the conditions are met delete the student*/
+            DELETE FROM enrollments
+            WHERE
+                student_b# = s_b#
+                AND classid = s_classid;
+
+            SELECT
+                COUNT(*)
+            INTO last
+            FROM
+                enrollments
+            WHERE
+                student_b# = s_b#;
+
+            SELECT
+                COUNT(*)
+            INTO nop
+            FROM
+                enrollments
+            WHERE
+                classid = s_classid;
+
+        END IF;
+
+        IF ( last = 0 ) THEN
+            dbms_output.put_line('This student is not enrolled in any other  classes');
+        END IF;
+        IF ( nop = 0 ) THEN
+            dbms_output.put_line('The class now has no students');
+/*        ELSE
+             dbms_output.put_line('The student de-registered from the class'); */
+        END IF;
+    END drop_student;
+
+END students_registration;
+
+
+/*TRIGGERS*/
+create or replace TRIGGER tr_enrollment_insert AFTER
+/*TRIGGERS - Created for recording logs in logs table when student is enrolled in class and for updating the class size */ 
+    INSERT ON enrollments
+    FOR EACH ROW
+DECLARE
+    name VARCHAR2(20);
+BEGIN
+
+    SELECT
+        user
+    INTO name
+    FROM
+        dual;
+
+    INSERT INTO logs VALUES (
+        log#.NEXTVAL,
+        name,
+        sysdate,
+        'ENROLLMENTS',
+        'INSERT',
+        :NEW.student_b#
+        ||','
+        ||:NEW.classid
+    );
+
+/*
+    UPDATE classes
+    SET
+        classes.class_size = classes.class_size + 1
+    WHERE
+        classid = :new.classid;*/
+
+END;
+
+
+create or replace TRIGGER tr_enrollment_delete BEFORE
+/*TRIGGERS - Created for recording logs in logs table when student is dropped from class and for updating the class size */ 
+    DELETE ON enrollments
+    FOR EACH ROW
+DECLARE
+    name VARCHAR2(20);
+
+BEGIN
+    SELECT
+        user
+    INTO name
+    FROM
+        dual;
+
+    INSERT INTO logs VALUES (
+        log#.NEXTVAL,
+        name,
+        sysdate,
+        'ENROLLMENTS',
+        'DELETE',
+        :OLD.student_b#
+        ||','
+        ||:OLD.classid
+    );
+
+    UPDATE classes
+    SET
+        classes.class_size = classes.class_size - 1
+    WHERE
+        classid = :old.classid;
+
+END;
+
+
+create or replace TRIGGER tr_classes_update BEFORE
+/*TRIGGERS - Created for recording logs in logs table when class size is updated */ 
+    UPDATE ON classes
+    FOR EACH ROW
+DECLARE
+    name VARCHAR2(20);
+BEGIN
+    SELECT
+        user
+    INTO name
+    FROM
+        dual;
+
+    INSERT INTO logs VALUES (
+        log#.NEXTVAL,
+        name,
+        sysdate,
+        'CLASSES',
+        'UPDATE',
+        :new.classid
+    );
+
+END;
